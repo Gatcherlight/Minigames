@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARCADE — Мини Игры</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@300;400;600;700&display=swap');
+
+  :root {
+    --bg: #080810;
+    --surface: #0f0f1a;
+    --border: #1e1e3a;
+    --neon-cyan: #00f5ff;
+    --neon-pink: #ff006e;
+    --neon-yellow: #ffe600;
+    --neon-green: #00ff88;
+    --text: #c8c8e8;
+    --text-dim: #5a5a7a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanlines overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* CRT vignette */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
+    z-index: 998;
+  }
+
+  header {
+    text-align: center;
+    padding: 40px 20px 20px;
+    position: relative;
+  }
+
+  .logo {
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(24px, 5vw, 48px);
+    color: var(--neon-cyan);
+    text-shadow: 0 0 20px var(--neon-cyan), 0 0 60px var(--neon-cyan), 0 0 100px rgba(0,245,255,0.3);
+    animation: flicker 4s infinite;
+    letter-spacing: 4px;
+  }
+
+  .subtitle {
+    font-size: 14px;
+    color: var(--neon-pink);
+    letter-spacing: 8px;
+    text-transform: uppercase;
+    margin-top: 12px;
+    text-shadow: 0 0 10px var(--neon-pink);
+  }
+
+  @keyframes flicker {
+    0%, 95%, 100% { opacity: 1; }
+    96% { opacity: 0.8; }
+    97% { opacity: 1; }
+    98% { opacity: 0.6; }
+    99% { opacity: 1; }
+  }
+
+  /* Nav tabs */
+  .game-nav {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px 20px 0;
+    flex-wrap: wrap;
+  }
+
+  .nav-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    padding: 10px 16px;
+    background: transparent;
+    border: 2px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .nav-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .nav-btn:hover { color: var(--neon-cyan); border-color: var(--neon-cyan); box-shadow: 0 0 15px rgba(0,245,255,0.3); }
+  .nav-btn.active { color: var(--neon-cyan); border-color: var(--neon-cyan); box-shadow: 0 0 20px rgba(0,245,255,0.5), inset 0 0 20px rgba(0,245,255,0.05); }
+
+  /* Game container */
+  .arena {
+    max-width: 900px;
+    margin: 30px auto;
+    padding: 0 20px;
+  }
+
+  .game-panel {
+    display: none;
+    border: 2px solid var(--border);
+    background: var(--surface);
+    position: relative;
+  }
+
+  .game-panel.active { display: block; }
+
+  .game-panel::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: 20px;
+    right: 20px;
+    height: 1px;
+    background: var(--neon-cyan);
+    box-shadow: 0 0 10px var(--neon-cyan);
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    color: var(--neon-cyan);
+  }
+
+  .score-display {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: var(--neon-yellow);
+    text-shadow: 0 0 10px var(--neon-yellow);
+  }
+
+  /* ================================
+     GAME 1: SNAKE
+  ================================ */
+  #snakeCanvas {
+    display: block;
+    margin: 0 auto;
+    background: #050508;
+    cursor: none;
+  }
+
+  /* ================================
+     GAME 2: BREAKOUT
+  ================================ */
+  #breakoutCanvas {
+    display: block;
+    margin: 0 auto;
+    background: #050508;
+  }
+
+  /* ================================
+     GAME 3: REACTION
+  ================================ */
+  .reaction-area {
+    padding: 40px 24px;
+    text-align: center;
+  }
+
+  .reaction-target {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    margin: 0 auto 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.1s;
+    user-select: none;
+    border: 3px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+  }
+
+  .reaction-target.waiting {
+    background: #1a0a0a;
+    border-color: var(--neon-pink);
+    color: var(--neon-pink);
+    box-shadow: 0 0 30px rgba(255,0,110,0.3);
+    animation: pulse-red 1s infinite;
+  }
+
+  .reaction-target.go {
+    background: #001a0a;
+    border-color: var(--neon-green);
+    color: var(--neon-green);
+    box-shadow: 0 0 50px rgba(0,255,136,0.5), 0 0 100px rgba(0,255,136,0.2);
+    animation: none;
+  }
+
+  @keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 20px rgba(255,0,110,0.3); }
+    50% { box-shadow: 0 0 40px rgba(255,0,110,0.6); }
+  }
+
+  .reaction-stats {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    flex-wrap: wrap;
+  }
+
+  .stat-box {
+    text-align: center;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .stat-value {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 18px;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 10px var(--neon-cyan);
+    margin-top: 6px;
+  }
+
+  /* ================================
+     GAME 4: MEMORY
+  ================================ */
+  .memory-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    padding: 24px;
+    max-width: 400px;
+    margin: 0 auto;
+  }
+
+  .memory-card {
+    aspect-ratio: 1;
+    border: 2px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    transition: all 0.3s;
+    transform-style: preserve-3d;
+    position: relative;
+    border-radius: 4px;
+  }
+
+  .memory-card .front,
+  .memory-card .back {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backface-visibility: hidden;
+    border-radius: 2px;
+  }
+
+  .memory-card .back {
+    background: linear-gradient(135deg, #0a0a18, #15153a);
+    font-size: 22px;
+    color: var(--text-dim);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+  }
+
+  .memory-card .front {
+    transform: rotateY(180deg);
+    background: #0a1a0a;
+    border: 1px solid rgba(0,255,136,0.2);
+    font-size: 28px;
+  }
+
+  .memory-card.flipped {
+    transform: rotateY(180deg);
+    border-color: var(--neon-green);
+    box-shadow: 0 0 15px rgba(0,255,136,0.3);
+  }
+
+  .memory-card.matched {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 20px rgba(0,245,255,0.4);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  /* ================================
+     GAME 5: FLAPPY
+  ================================ */
+  #flappyCanvas {
+    display: block;
+    margin: 0 auto;
+    background: #050508;
+    cursor: pointer;
+  }
+
+  /* Controls */
+  .controls {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    padding: 10px 20px;
+    background: transparent;
+    cursor: pointer;
+    border: 2px solid;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+  }
+
+  .btn-cyan { color: var(--neon-cyan); border-color: var(--neon-cyan); }
+  .btn-cyan:hover { background: rgba(0,245,255,0.1); box-shadow: 0 0 20px rgba(0,245,255,0.3); }
+  .btn-pink { color: var(--neon-pink); border-color: var(--neon-pink); }
+  .btn-pink:hover { background: rgba(255,0,110,0.1); box-shadow: 0 0 20px rgba(255,0,110,0.3); }
+  .btn-yellow { color: var(--neon-yellow); border-color: var(--neon-yellow); }
+  .btn-yellow:hover { background: rgba(255,230,0,0.1); box-shadow: 0 0 20px rgba(255,230,0,0.3); }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    padding: 10px 24px;
+    text-align: center;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 30px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .grid-bg {
+    position: fixed;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header, .game-nav, .arena, footer { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+
+<header>
+  <div class="logo">ARCADE</div>
+  <div class="subtitle">Мини Игры · 5 в 1</div>
+</header>
+
+<nav class="game-nav">
+  <button class="nav-btn active" onclick="switchGame('snake')">🐍 ЗМЕЙКА</button>
+  <button class="nav-btn" onclick="switchGame('breakout')">🧱 АРКАНОИД</button>
+  <button class="nav-btn" onclick="switchGame('reaction')">⚡ РЕАКЦИЯ</button>
+  <button class="nav-btn" onclick="switchGame('memory')">🃏 ПАМЯТЬ</button>
+  <button class="nav-btn" onclick="switchGame('flappy')">🐦 ФЛАППИ</button>
+</nav>
+
+<div class="arena">
+
+  <!-- SNAKE -->
+  <div id="panel-snake" class="game-panel active">
+    <div class="panel-header">
+      <span class="panel-title">🐍 ЗМЕЙКА</span>
+      <span class="score-display">СЧЁТ: <span id="snake-score">0</span></span>
+    </div>
+    <canvas id="snakeCanvas" width="600" height="400"></canvas>
+    <div class="controls">
+      <button class="btn btn-cyan" onclick="startSnake()">СТАРТ</button>
+      <button class="btn btn-pink" onclick="pauseSnake()">ПАУЗА</button>
+    </div>
+    <div class="hint">СТРЕЛКИ / WASD · ПРОБЕЛ — пауза</div>
+  </div>
+
+  <!-- BREAKOUT -->
+  <div id="panel-breakout" class="game-panel">
+    <div class="panel-header">
+      <span class="panel-title">🧱 АРКАНОИД</span>
+      <span class="score-display">СЧЁТ: <span id="breakout-score">0</span> | ЖИЗНИ: <span id="breakout-lives">3</span></span>
+    </div>
+    <canvas id="breakoutCanvas" width="600" height="400"></canvas>
+    <div class="controls">
+      <button class="btn btn-cyan" onclick="startBreakout()">СТАРТ</button>
+    </div>
+    <div class="hint">МЫШЬ / СТРЕЛКИ · ДВИГАЙ ПЛАТФОРМУ</div>
+  </div>
+
+  <!-- REACTION -->
+  <div id="panel-reaction" class="game-panel">
+    <div class="panel-header">
+      <span class="panel-title">⚡ ТЕСТ РЕАКЦИИ</span>
+      <span class="score-display">ЛУЧШИЙ: <span id="reaction-best">—</span></span>
+    </div>
+    <div class="reaction-area">
+      <div class="reaction-target" id="reactionTarget" onclick="handleReactionClick()">НАЖМИ СТАРТ</div>
+      <div class="reaction-stats">
+        <div class="stat-box">
+          <div class="stat-label">Последний</div>
+          <div class="stat-value" id="reaction-last">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Среднее</div>
+          <div class="stat-value" id="reaction-avg">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Попыток</div>
+          <div class="stat-value" id="reaction-count">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="hint">ДОЖДИСЬ ЗЕЛЁНОГО — ТАК БЫСТРО КАК МОЖЕШЬ!</div>
+  </div>
+
+  <!-- MEMORY -->
+  <div id="panel-memory" class="game-panel">
+    <div class="panel-header">
+      <span class="panel-title">🃏 ПАМЯТЬ</span>
+      <span class="score-display">ХОДЫ: <span id="memory-moves">0</span> | ПАРЫ: <span id="memory-pairs">0</span>/8</span>
+    </div>
+    <div class="memory-grid" id="memoryGrid"></div>
+    <div class="controls">
+      <button class="btn btn-cyan" onclick="initMemory()">НОВАЯ ИГРА</button>
+    </div>
+  </div>
+
+  <!-- FLAPPY -->
+  <div id="panel-flappy" class="game-panel">
+    <div class="panel-header">
+      <span class="panel-title">🐦 ФЛАППИ ПТИЦА</span>
+      <span class="score-display">СЧЁТ: <span id="flappy-score">0</span> | ЛУЧШИЙ: <span id="flappy-best">0</span></span>
+    </div>
+    <canvas id="flappyCanvas" width="600" height="400"></canvas>
+    <div class="controls">
+      <button class="btn btn-cyan" onclick="startFlappy()">СТАРТ</button>
+    </div>
+    <div class="hint">КЛИК / ПРОБЕЛ — ПРЫЖОК</div>
+  </div>
+
+</div>
+
+<footer>INSERT COIN · PRESS START · © ARCADE 2025</footer>
+
+<script>
+// ============================================================
+// NAVIGATION
+// ============================================================
+function switchGame(name) {
+  document.querySelectorAll('.game-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+// ============================================================
+// GAME 1: SNAKE
+// ============================================================
+const snakeCanvas = document.getElementById('snakeCanvas');
+const sCtx = snakeCanvas.getContext('2d');
+const CELL = 20;
+const COLS = snakeCanvas.width / CELL;
+const ROWS = snakeCanvas.height / CELL;
+
+let snake, dir, nextDir, food, snakeScore, snakeRunning, snakePaused, snakeLoop;
+
+function startSnake() {
+  clearInterval(snakeLoop);
+  snake = [{x:10,y:10},{x:9,y:10},{x:8,y:10}];
+  dir = {x:1,y:0};
+  nextDir = {x:1,y:0};
+  snakeScore = 0;
+  snakeRunning = true;
+  snakePaused = false;
+  document.getElementById('snake-score').textContent = 0;
+  placeFood();
+  snakeLoop = setInterval(updateSnake, 100);
+}
+
+function pauseSnake() {
+  if (!snakeRunning) return;
+  snakePaused = !snakePaused;
+}
+
+function placeFood() {
+  let pos;
+  do {
+    pos = {x: Math.floor(Math.random()*COLS), y: Math.floor(Math.random()*ROWS)};
+  } while (snake.some(s => s.x===pos.x && s.y===pos.y));
+  food = pos;
+}
+
+function updateSnake() {
+  if (!snakeRunning || snakePaused) { drawSnake(); return; }
+  dir = {...nextDir};
+  const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+  if (head.x < 0) head.x = COLS-1;
+  if (head.x >= COLS) head.x = 0;
+  if (head.y < 0) head.y = ROWS-1;
+  if (head.y >= ROWS) head.y = 0;
+  if (snake.some(s => s.x===head.x && s.y===head.y)) {
+    clearInterval(snakeLoop);
+    snakeRunning = false;
+    drawSnake();
+    sCtx.fillStyle = 'rgba(0,0,0,0.6)';
+    sCtx.fillRect(0,0,snakeCanvas.width,snakeCanvas.height);
+    sCtx.fillStyle = '#ff006e';
+    sCtx.font = "bold 14px 'Press Start 2P'";
+    sCtx.textAlign = 'center';
+    sCtx.shadowColor = '#ff006e';
+    sCtx.shadowBlur = 20;
+    sCtx.fillText('GAME OVER', snakeCanvas.width/2, snakeCanvas.height/2 - 10);
+    sCtx.font = "10px 'Press Start 2P'";
+    sCtx.fillStyle = '#c8c8e8';
+    sCtx.shadowBlur = 0;
+    sCtx.fillText('СЧЁТ: ' + snakeScore, snakeCanvas.width/2, snakeCanvas.height/2 + 20);
+    return;
+  }
+  snake.unshift(head);
+  if (head.x === food.x && head.y === food.y) {
+    snakeScore += 10;
+    document.getElementById('snake-score').textContent = snakeScore;
+    placeFood();
+  } else {
+    snake.pop();
+  }
+  drawSnake();
+}
+
+function drawSnake() {
+  sCtx.fillStyle = '#050508';
+  sCtx.fillRect(0,0,snakeCanvas.width,snakeCanvas.height);
+  // Grid
+  sCtx.strokeStyle = 'rgba(0,245,255,0.04)';
+  sCtx.lineWidth = 0.5;
+  for(let x=0;x<COLS;x++){for(let y=0;y<ROWS;y++){sCtx.strokeRect(x*CELL,y*CELL,CELL,CELL);}}
+
+  // Food
+  sCtx.shadowColor = '#ff006e';
+  sCtx.shadowBlur = 15;
+  sCtx.fillStyle = '#ff006e';
+  sCtx.fillRect(food.x*CELL+2, food.y*CELL+2, CELL-4, CELL-4);
+  sCtx.shadowBlur = 0;
+
+  // Snake
+  snake.forEach((seg, i) => {
+    const t = i / snake.length;
+    sCtx.shadowColor = '#00f5ff';
+    sCtx.shadowBlur = i === 0 ? 20 : 8;
+    sCtx.fillStyle = i === 0 ? '#00f5ff' : `rgba(0,${Math.floor(200-t*100)},${Math.floor(255-t*100)},${1-t*0.4})`;
+    sCtx.fillRect(seg.x*CELL+1, seg.y*CELL+1, CELL-2, CELL-2);
+  });
+  sCtx.shadowBlur = 0;
+
+  if (snakePaused) {
+    sCtx.fillStyle = 'rgba(0,0,0,0.5)';
+    sCtx.fillRect(0,0,snakeCanvas.width,snakeCanvas.height);
+    sCtx.fillStyle = '#ffe600';
+    sCtx.font = "14px 'Press Start 2P'";
+    sCtx.textAlign = 'center';
+    sCtx.shadowColor = '#ffe600';
+    sCtx.shadowBlur = 20;
+    sCtx.fillText('ПАУЗА', snakeCanvas.width/2, snakeCanvas.height/2);
+    sCtx.shadowBlur = 0;
+  }
+}
+
+document.addEventListener('keydown', e => {
+  const map = {
+    ArrowUp:{x:0,y:-1}, ArrowDown:{x:0,y:1}, ArrowLeft:{x:-1,y:0}, ArrowRight:{x:1,y:0},
+    KeyW:{x:0,y:-1}, KeyS:{x:0,y:1}, KeyA:{x:-1,y:0}, KeyD:{x:1,y:0}
+  };
+  if (map[e.code]) {
+    const nd = map[e.code];
+    if(!(nd.x===-dir.x && nd.y===-dir.y)) nextDir = nd;
+    e.preventDefault();
+  }
+  if (e.code === 'Space') { pauseSnake(); e.preventDefault(); }
+});
+
+// Draw initial screen
+(function(){
+  sCtx.fillStyle = '#050508';
+  sCtx.fillRect(0,0,snakeCanvas.width,snakeCanvas.height);
+  sCtx.fillStyle = '#00f5ff';
+  sCtx.font = "12px 'Press Start 2P'";
+  sCtx.textAlign = 'center';
+  sCtx.shadowColor = '#00f5ff';
+  sCtx.shadowBlur = 20;
+  sCtx.fillText('НАЖМИ СТАРТ', snakeCanvas.width/2, snakeCanvas.height/2);
+  sCtx.shadowBlur = 0;
+})();
+
+// ============================================================
+// GAME 2: BREAKOUT
+// ============================================================
+const bCanvas = document.getElementById('breakoutCanvas');
+const bCtx = bCanvas.getContext('2d');
+let bPaddle, bBall, bBricks, bScore, bLives, bRunning, bFrame, bMouseX;
+const BRICK_ROWS = 5, BRICK_COLS = 10;
+const BRICK_W = 52, BRICK_H = 18, BRICK_PAD = 4;
+const BRICK_OFFSET_X = 14, BRICK_OFFSET_Y = 40;
+const BRICK_COLORS = ['#ff006e','#ff4444','#ff9900','#ffe600','#00ff88'];
+
+function startBreakout() {
+  cancelAnimationFrame(bFrame);
+  bScore = 0; bLives = 3;
+  document.getElementById('breakout-score').textContent = '0';
+  document.getElementById('breakout-lives').textContent = '3';
+  bPaddle = {x: bCanvas.width/2 - 50, y: bCanvas.height - 30, w: 100, h: 12};
+  bBall = {x: bCanvas.width/2, y: bCanvas.height - 50, vx: 3.5, vy: -3.5, r: 7};
+  bBricks = [];
+  for(let r=0;r<BRICK_ROWS;r++) for(let c=0;c<BRICK_COLS;c++)
+    bBricks.push({x:BRICK_OFFSET_X+c*(BRICK_W+BRICK_PAD), y:BRICK_OFFSET_Y+r*(BRICK_H+BRICK_PAD), alive:true, color:BRICK_COLORS[r]});
+  bRunning = true;
+  bMouseX = bCanvas.width/2;
+  bLoop();
+}
+
+bCanvas.addEventListener('mousemove', e => {
+  const rect = bCanvas.getBoundingClientRect();
+  bMouseX = e.clientX - rect.left;
+});
+
+document.addEventListener('keydown', e => {
+  if (!bRunning) return;
+  if (e.code === 'ArrowLeft') bPaddle.x = Math.max(0, bPaddle.x - 20);
+  if (e.code === 'ArrowRight') bPaddle.x = Math.min(bCanvas.width - bPaddle.w, bPaddle.x + 20);
+});
+
+function bLoop() {
+  if (!bRunning) return;
+  updateBreakout();
+  drawBreakout();
+  bFrame = requestAnimationFrame(bLoop);
+}
+
+function updateBreakout() {
+  bPaddle.x = Math.min(bCanvas.width - bPaddle.w, Math.max(0, bMouseX - bPaddle.w/2));
+  bBall.x += bBall.vx;
+  bBall.y += bBall.vy;
+  if(bBall.x < bBall.r || bBall.x > bCanvas.width - bBall.r) bBall.vx *= -1;
+  if(bBall.y < bBall.r) bBall.vy *= -1;
+  if(bBall.y > bCanvas.height + 20) {
+    bLives--;
+    document.getElementById('breakout-lives').textContent = bLives;
+    if(bLives <= 0) { bRunning = false; return; }
+    bBall = {x: bCanvas.width/2, y: bCanvas.height-50, vx: 3.5*(Math.random()>0.5?1:-1), vy:-3.5, r:7};
+  }
+  if(bBall.y+bBall.r > bPaddle.y && bBall.x > bPaddle.x && bBall.x < bPaddle.x+bPaddle.w && bBall.vy > 0) {
+    const rel = (bBall.x - (bPaddle.x + bPaddle.w/2)) / (bPaddle.w/2);
+    bBall.vx = rel * 5;
+    bBall.vy = -Math.abs(bBall.vy);
+  }
+  bBricks.forEach(br => {
+    if(!br.alive) return;
+    if(bBall.x+bBall.r > br.x && bBall.x-bBall.r < br.x+BRICK_W && bBall.y+bBall.r > br.y && bBall.y-bBall.r < br.y+BRICK_H) {
+      br.alive = false;
+      bBall.vy *= -1;
+      bScore += 10;
+      document.getElementById('breakout-score').textContent = bScore;
+    }
+  });
+  if(bBricks.every(b=>!b.alive)) { bRunning = false; }
+}
+
+function drawBreakout() {
+  bCtx.fillStyle = '#050508';
+  bCtx.fillRect(0,0,bCanvas.width,bCanvas.height);
+  // Grid
+  bCtx.strokeStyle = 'rgba(0,245,255,0.03)';
+  bCtx.lineWidth = 0.5;
+  for(let x=0;x<bCanvas.width;x+=30) { bCtx.beginPath(); bCtx.moveTo(x,0); bCtx.lineTo(x,bCanvas.height); bCtx.stroke(); }
+  for(let y=0;y<bCanvas.height;y+=30) { bCtx.beginPath(); bCtx.moveTo(0,y); bCtx.lineTo(bCanvas.width,y); bCtx.stroke(); }
+
+  bBricks.forEach(br => {
+    if(!br.alive) return;
+    bCtx.shadowColor = br.color;
+    bCtx.shadowBlur = 8;
+    bCtx.fillStyle = br.color + '33';
+    bCtx.fillRect(br.x,br.y,BRICK_W,BRICK_H);
+    bCtx.strokeStyle = br.color;
+    bCtx.lineWidth = 1.5;
+    bCtx.strokeRect(br.x,br.y,BRICK_W,BRICK_H);
+    bCtx.shadowBlur = 0;
+  });
+
+  // Paddle
+  bCtx.shadowColor = '#00f5ff';
+  bCtx.shadowBlur = 15;
+  bCtx.fillStyle = 'rgba(0,245,255,0.15)';
+  bCtx.fillRect(bPaddle.x, bPaddle.y, bPaddle.w, bPaddle.h);
+  bCtx.strokeStyle = '#00f5ff';
+  bCtx.lineWidth = 2;
+  bCtx.strokeRect(bPaddle.x, bPaddle.y, bPaddle.w, bPaddle.h);
+
+  // Ball
+  bCtx.shadowColor = '#ffe600';
+  bCtx.shadowBlur = 20;
+  bCtx.beginPath();
+  bCtx.arc(bBall.x, bBall.y, bBall.r, 0, Math.PI*2);
+  bCtx.fillStyle = '#ffe600';
+  bCtx.fill();
+  bCtx.shadowBlur = 0;
+
+  if (!bRunning) {
+    bCtx.fillStyle = 'rgba(0,0,0,0.65)';
+    bCtx.fillRect(0,0,bCanvas.width,bCanvas.height);
+    const won = bBricks.every(b=>!b.alive);
+    bCtx.fillStyle = won ? '#00ff88' : '#ff006e';
+    bCtx.font = "14px 'Press Start 2P'";
+    bCtx.textAlign = 'center';
+    bCtx.shadowColor = won ? '#00ff88' : '#ff006e';
+    bCtx.shadowBlur = 20;
+    bCtx.fillText(won ? 'ПОБЕДА!' : 'GAME OVER', bCanvas.width/2, bCanvas.height/2 - 10);
+    bCtx.font = "9px 'Press Start 2P'";
+    bCtx.fillStyle = '#c8c8e8';
+    bCtx.shadowBlur = 0;
+    bCtx.fillText('СЧЁТ: ' + bScore, bCanvas.width/2, bCanvas.height/2 + 20);
+  }
+}
+
+(function(){
+  bCtx.fillStyle = '#050508';
+  bCtx.fillRect(0,0,bCanvas.width,bCanvas.height);
+  bCtx.fillStyle = '#00f5ff';
+  bCtx.font = "12px 'Press Start 2P'";
+  bCtx.textAlign = 'center';
+  bCtx.shadowColor = '#00f5ff';
+  bCtx.shadowBlur = 20;
+  bCtx.fillText('НАЖМИ СТАРТ', bCanvas.width/2, bCanvas.height/2);
+  bCtx.shadowBlur = 0;
+})();
+
+// ============================================================
+// GAME 3: REACTION
+// ============================================================
+let reactionState = 'idle', reactionTimer, reactionStart;
+let reactionTimes = [], reactionBest = Infinity;
+const rTarget = document.getElementById('reactionTarget');
+
+function handleReactionClick() {
+  if (reactionState === 'idle') {
+    rTarget.className = 'reaction-target waiting';
+    rTarget.textContent = 'СТОП... ЖДИ...';
+    reactionState = 'waiting';
+    const delay = 1500 + Math.random() * 3000;
+    reactionTimer = setTimeout(() => {
+      rTarget.className = 'reaction-target go';
+      rTarget.textContent = 'ЖМИ!';
+      reactionStart = Date.now();
+      reactionState = 'go';
+    }, delay);
+  } else if (reactionState === 'waiting') {
+    clearTimeout(reactionTimer);
+    rTarget.className = 'reaction-target';
+    rTarget.textContent = 'СЛИШКОМ РАНО!\nКлик для повтора';
+    reactionState = 'idle';
+  } else if (reactionState === 'go') {
+    const t = Date.now() - reactionStart;
+    reactionTimes.push(t);
+    if (t < reactionBest) {
+      reactionBest = t;
+      document.getElementById('reaction-best').textContent = t + ' мс';
+    }
+    document.getElementById('reaction-last').textContent = t + ' мс';
+    const avg = Math.round(reactionTimes.reduce((a,b)=>a+b,0)/reactionTimes.length);
+    document.getElementById('reaction-avg').textContent = avg + ' мс';
+    document.getElementById('reaction-count').textContent = reactionTimes.length;
+    rTarget.className = 'reaction-target';
+    rTarget.textContent = t + ' МС!\nЕщё раз?';
+    reactionState = 'idle';
+  }
+}
+
+// ============================================================
+// GAME 4: MEMORY
+// ============================================================
+const EMOJIS = ['🎮','🚀','⭐','🔥','💎','🌙','⚡','🎯'];
+let memoryCards = [], memoryFlipped = [], memoryMoves = 0, memoryPairs = 0, memoryLock = false;
+
+function initMemory() {
+  memoryMoves = 0; memoryPairs = 0; memoryFlipped = []; memoryLock = false;
+  document.getElementById('memory-moves').textContent = 0;
+  document.getElementById('memory-pairs').textContent = 0;
+  const pairs = [...EMOJIS, ...EMOJIS].sort(() => Math.random()-0.5);
+  const grid = document.getElementById('memoryGrid');
+  grid.innerHTML = '';
+  memoryCards = pairs.map((emoji, i) => {
+    const card = document.createElement('div');
+    card.className = 'memory-card';
+    card.innerHTML = `<div class="back">?</div><div class="front">${emoji}</div>`;
+    card.dataset.emoji = emoji;
+    card.dataset.index = i;
+    card.addEventListener('click', () => flipCard(card));
+    grid.appendChild(card);
+    return card;
+  });
+}
+
+function flipCard(card) {
+  if (memoryLock || card.classList.contains('flipped') || card.classList.contains('matched')) return;
+  card.classList.add('flipped');
+  memoryFlipped.push(card);
+  if (memoryFlipped.length === 2) {
+    memoryLock = true;
+    memoryMoves++;
+    document.getElementById('memory-moves').textContent = memoryMoves;
+    const [a, b] = memoryFlipped;
+    if (a.dataset.emoji === b.dataset.emoji) {
+      a.classList.add('matched'); b.classList.add('matched');
+      memoryPairs++;
+      document.getElementById('memory-pairs').textContent = memoryPairs;
+      memoryFlipped = []; memoryLock = false;
+    } else {
+      setTimeout(() => {
+        a.classList.remove('flipped'); b.classList.remove('flipped');
+        memoryFlipped = []; memoryLock = false;
+      }, 900);
+    }
+  }
+}
+initMemory();
+
+// ============================================================
+// GAME 5: FLAPPY BIRD
+// ============================================================
+const fCanvas = document.getElementById('flappyCanvas');
+const fCtx = fCanvas.getContext('2d');
+let fBird, fPipes, fFlappyScore, fFlappyBest = 0, fRunning = false, fFrame2, fGap = 130, fPipeSpeed = 2.5;
+
+function startFlappy() {
+  cancelAnimationFrame(fFrame2);
+  fBird = {x: 100, y: fCanvas.height/2, vy: 0, r: 14};
+  fPipes = [];
+  fFlappyScore = 0;
+  document.getElementById('flappy-score').textContent = 0;
+  fRunning = true;
+  fPipeSpeed = 2.5;
+  fLoopFn();
+}
+
+function fJump() {
+  if (!fRunning) { startFlappy(); return; }
+  fBird.vy = -7;
+}
+
+fCanvas.addEventListener('click', fJump);
+document.addEventListener('keydown', e => { if(e.code==='Space' && document.getElementById('panel-flappy').classList.contains('active')) { fJump(); e.preventDefault(); }});
+
+function fLoopFn() {
+  if (!fRunning) return;
+  // Spawn pipes
+  if(fPipes.length === 0 || fPipes[fPipes.length-1].x < fCanvas.width - 200) {
+    const top = 60 + Math.random() * (fCanvas.height - fGap - 120);
+    fPipes.push({x: fCanvas.width, top, scored: false});
+  }
+  fBird.vy += 0.4;
+  fBird.y += fBird.vy;
+  // Pipes
+  fPipes.forEach(p => p.x -= fPipeSpeed);
+  fPipes = fPipes.filter(p => p.x > -80);
+  // Score
+  fPipes.forEach(p => {
+    if (!p.scored && p.x + 40 < fBird.x) {
+      p.scored = true; fFlappyScore++;
+      document.getElementById('flappy-score').textContent = fFlappyScore;
+      if (fFlappyScore > fFlappyBest) { fFlappyBest = fFlappyScore; document.getElementById('flappy-best').textContent = fFlappyBest; }
+      if (fFlappyScore % 5 === 0) fPipeSpeed += 0.2;
+    }
+    // Collision
+    const pw = 52;
+    if(fBird.x+fBird.r > p.x && fBird.x-fBird.r < p.x+pw) {
+      if(fBird.y-fBird.r < p.top || fBird.y+fBird.r > p.top + fGap) fRunning = false;
+    }
+  });
+  if(fBird.y + fBird.r > fCanvas.height || fBird.y - fBird.r < 0) fRunning = false;
+  drawFlappy();
+  fFrame2 = requestAnimationFrame(fLoopFn);
+}
+
+function drawFlappy() {
+  fCtx.fillStyle = '#050508';
+  fCtx.fillRect(0,0,fCanvas.width,fCanvas.height);
+  // Stars
+  fCtx.fillStyle = 'rgba(200,200,255,0.4)';
+  [[50,30],[150,80],[300,20],[450,60],[550,40],[80,200],[400,150],[520,180]].forEach(([x,y])=>{
+    fCtx.fillRect(x,y,1,1);
+  });
+
+  // Pipes
+  const pw = 52;
+  fPipes.forEach(p => {
+    fCtx.shadowColor = '#00ff88';
+    fCtx.shadowBlur = 10;
+    fCtx.fillStyle = 'rgba(0,255,136,0.15)';
+    fCtx.fillRect(p.x, 0, pw, p.top);
+    fCtx.fillRect(p.x, p.top + fGap, pw, fCanvas.height - p.top - fGap);
+    fCtx.strokeStyle = '#00ff88';
+    fCtx.lineWidth = 2;
+    fCtx.strokeRect(p.x, 0, pw, p.top);
+    fCtx.strokeRect(p.x, p.top + fGap, pw, fCanvas.height - p.top - fGap);
+    // Pipe caps
+    fCtx.fillStyle = 'rgba(0,255,136,0.25)';
+    fCtx.fillRect(p.x-5, p.top-16, pw+10, 16);
+    fCtx.fillRect(p.x-5, p.top+fGap, pw+10, 16);
+    fCtx.strokeRect(p.x-5, p.top-16, pw+10, 16);
+    fCtx.strokeRect(p.x-5, p.top+fGap, pw+10, 16);
+    fCtx.shadowBlur = 0;
+  });
+
+  // Bird
+  fCtx.shadowColor = '#ffe600';
+  fCtx.shadowBlur = 20;
+  fCtx.beginPath();
+  fCtx.arc(fBird.x, fBird.y, fBird.r, 0, Math.PI*2);
+  fCtx.fillStyle = '#ffe600';
+  fCtx.fill();
+  fCtx.strokeStyle = '#ff9900';
+  fCtx.lineWidth = 2;
+  fCtx.stroke();
+  // Eye
+  fCtx.fillStyle = '#050508';
+  fCtx.beginPath();
+  fCtx.arc(fBird.x+5, fBird.y-3, 3, 0, Math.PI*2);
+  fCtx.fill();
+  fCtx.shadowBlur = 0;
+
+  if (!fRunning) {
+    fCtx.fillStyle = 'rgba(0,0,0,0.65)';
+    fCtx.fillRect(0,0,fCanvas.width,fCanvas.height);
+    fCtx.fillStyle = '#ff006e';
+    fCtx.font = "14px 'Press Start 2P'";
+    fCtx.textAlign = 'center';
+    fCtx.shadowColor = '#ff006e';
+    fCtx.shadowBlur = 20;
+    fCtx.fillText(fFlappyScore > 0 ? 'GAME OVER' : 'НАЖМИ СТАРТ', fCanvas.width/2, fCanvas.height/2 - 15);
+    fCtx.font = "9px 'Press Start 2P'";
+    fCtx.fillStyle = '#00f5ff';
+    fCtx.shadowColor = '#00f5ff';
+    fCtx.fillText('КЛИК / ПРОБЕЛ — ПРЫЖОК', fCanvas.width/2, fCanvas.height/2 + 20);
+    fCtx.shadowBlur = 0;
+  }
+}
+
+// Initial screens
+(function(){
+  fCtx.fillStyle = '#050508';
+  fCtx.fillRect(0,0,fCanvas.width,fCanvas.height);
+  fCtx.fillStyle = '#ffe600';
+  fCtx.font = "12px 'Press Start 2P'";
+  fCtx.textAlign = 'center';
+  fCtx.shadowColor = '#ffe600';
+  fCtx.shadowBlur = 20;
+  fCtx.fillText('НАЖМИ СТАРТ', fCanvas.width/2, fCanvas.height/2);
+  fCtx.shadowBlur = 0;
+})();
+</script>
+</body>
+</html>
